@@ -2,22 +2,22 @@
 import torch
 import subprocess, os, re
 import tensorflow as tf
-with os.popen("git status") as f:
-    for line in f:
-        if "Untracked files:" in line:
-            break
-        print(line[:-1])
-        if re.search("\s*\w+:\s*\w+\.(py|sh|txt)", line):
-            raise ValueError("Not commited")
+def check_commit():
+    with os.popen("git status") as f:
+        for line in f:
+            if "Untracked files:" in line:
+                break
+            print(line[:-1])
+            if re.search("\s*\w+:\s*\w+\.(py|sh|txt)", line):
+                raise ValueError("Not commited")
+            
 # import tensorflow as tf
+
+check_commit()
 
 train_data_file = 'data/train.tsv'
 valid_data_file = 'data/test.tsv'
 cls_vocab_file = 'data/cls_vocab'
-
-with open(cls_vocab_file) as f:
-    res = [i.strip().lower() for i in f.readlines() if len(i.strip()) != 0]
-cls_vocab = dict(zip(res, range(len(res))))
 
 #定义数据集
 class Dataset(torch.utils.data.Dataset): 
@@ -42,17 +42,12 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):  
         return self.data[idx]
 
-        
-train_data = Dataset(train_data_file,cls_vocab)
-valid_data = Dataset(valid_data_file,cls_vocab)
 
 # %%
 from transformers import BertTokenizer
 
 checkpoint='bert-base-chinese'
 tokenizer = BertTokenizer.from_pretrained(checkpoint)
-
-tokenizer
 
 # %%
 from torch.utils.data import DataLoader
@@ -72,9 +67,6 @@ def collote_fn(batch_samples):
     )
     y = torch.tensor(batch_label)
     return X, y
-
-train_dataloader = DataLoader(train_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
-valid_dataloader = DataLoader(valid_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
 
 # %%
 from torch import nn
@@ -103,27 +95,27 @@ class NeuralNetwork(nn.Module):
         logits = self.classifier(o2)
         return logits
 
-model = NeuralNetwork().to(device)  
-
 # %%
 from tqdm.auto import tqdm
-with os.popen("cd /code_lp/baseline && git log") as f:
-    matched_ = False
-    for line in f.readlines():
-        matched = re.search("(?<=commit\s)\w{5,5}", line)
-        if matched_ and matched:
-            break
-        elif not matched_ and matched:
-            log = line[matched.start(): matched.end()]
-        else:
+def get_log():
+    with os.popen("cd /code_lp/baseline && git log") as f:
+        matched_ = False
+        for line in f.readlines():
+            # print(line)
+            matched = re.search("(?<=commit\s)\w{5,5}", line)
+            if matched_ and matched:
+                break
+            if not matched_ and matched:
+                matched_ = True
+                log = line[matched.start(): matched.end()]
+                continue
             if re.search("^(Author|Date):", line):
                 continue
             if len(line.split()) > 0:
                 note=","+"_".join(line.split())
                 log+=note
-log = log[:20]
-    
-tf_writer = tf.summary.create_file_writer(f"./summary/{log}")
+    return log[:20]
+
 
 def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))   
@@ -166,37 +158,46 @@ def test_loop(dataloader, model, mode='Test'):
 from torch import nn
 from transformers import AdamW, get_scheduler
 
-learning_rate = 1e-5
-epoch_num = 10
+def main():
 
-loss_fn = nn.CrossEntropyLoss()  # 交叉熵
-optimizer = AdamW(model.parameters(), lr=learning_rate)  
-lr_scheduler = get_scheduler(  
-    "linear",
-    optimizer=optimizer,
-    num_warmup_steps=0,
-    num_training_steps=epoch_num*len(train_dataloader),
-)
+    model = NeuralNetwork().to(device)  
 
-total_loss = 0.
-best_acc = 0.
-for t in range(epoch_num):
-    print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
-    total_loss, mean_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
-    valid_acc = test_loop(valid_dataloader, model, mode='Valid')
-    if valid_acc > best_acc:
-        best_acc = valid_acc
-        print('saving new weights...\n')
-        torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
-    with tf_writer.as_default():
-        tf.summary.scalar("train_loss", mean_loss, step=t)
-        tf.summary.scalar("valid_acc", valid_acc, step=t)
-print("Done!")
+    with open(cls_vocab_file) as f:
+        res = [i.strip().lower() for i in f.readlines() if len(i.strip()) != 0]
+    cls_vocab = dict(zip(res, range(len(res))))
+    train_data = Dataset(train_data_file,cls_vocab)
+    valid_data = Dataset(valid_data_file,cls_vocab)
+    train_dataloader = DataLoader(train_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
+    valid_dataloader = DataLoader(valid_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
+    learning_rate = 1e-5
+    epoch_num = 10
 
-# %%
+    loss_fn = nn.CrossEntropyLoss()  # 交叉熵
+    optimizer = AdamW(model.parameters(), lr=learning_rate)  
+    lr_scheduler = get_scheduler(  
+        "linear",
+        optimizer=optimizer,
+        num_warmup_steps=0,
+        num_training_steps=epoch_num*len(train_dataloader),
+    )
 
+    total_loss = 0.
+    best_acc = 0.
+    log = get_log()
+    tf_writer = tf.summary.create_file_writer(f"./summary/{log}")
+    for t in range(epoch_num):
+        print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
+        total_loss, mean_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
+        valid_acc = test_loop(valid_dataloader, model, mode='Valid')
+        if valid_acc > best_acc:
+            best_acc = valid_acc
+            print('saving new weights...\n')
+            torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
+        with tf_writer.as_default():
+            tf.summary.scalar("train_loss", mean_loss, step=t)
+            tf.summary.scalar("valid_acc", valid_acc, step=t)
+    print("Done!")
 
-# %%
-
-
-
+if __name__ == "__main__":
+    main()
+    # print(get_log())
