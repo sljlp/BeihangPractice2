@@ -3,6 +3,7 @@ import torch
 import subprocess, os, re
 import tensorflow as tf
 def check_commit():
+    assert os.path.isdir(".git")
     with os.popen("git status") as f:
         for line in f:
             if "Untracked files:" in line:
@@ -98,7 +99,7 @@ class NeuralNetwork(nn.Module):
 # %%
 from tqdm.auto import tqdm
 def get_log():
-    with os.popen("cd /code_lp/baseline && git log") as f:
+    with os.popen("git log") as f:
         matched_ = False
         for line in f.readlines():
             # print(line)
@@ -116,7 +117,15 @@ def get_log():
                 log+=note
             if len(log) >= 50:
                 break
-    return log[:50]
+    log = log[:50]
+    log =f"/code_lp/baseline/summary/{log}"
+
+    if os.path.isdir(log):
+        idx = 1
+        while os.path.isdir("%s_%03d" % (log, idx)):
+            idx += 1
+        return "%s_%03d" % (log, idx)
+    return log
     
 
 def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total_loss):
@@ -172,7 +181,7 @@ def main():
     train_dataloader = DataLoader(train_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
     valid_dataloader = DataLoader(valid_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
     learning_rate = 1e-5
-    epoch_num = 20
+    epoch_num = 40
 
     loss_fn = nn.CrossEntropyLoss()  # 交叉熵
     optimizer = AdamW(model.parameters(), lr=learning_rate)  
@@ -186,7 +195,7 @@ def main():
     total_loss = 0.
     best_acc = 0.
     log = get_log()
-    tf_writer = tf.summary.create_file_writer(f"./summary/{log}")
+    tf_writer = tf.summary.create_file_writer(log)
     for t in range(epoch_num):
         print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
         total_loss, mean_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
