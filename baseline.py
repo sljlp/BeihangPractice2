@@ -87,12 +87,20 @@ class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
         self.bert_encoder = AutoModel.from_pretrained(checkpoint)  
-        self.classifier = nn.Linear(768, 48)  
+        self.linear = nn.Linear(768, 768*2) 
+        self.act = nn.ReLU() 
+        # out = 48
+        self.linear2 = nn.Linear(768*2, 768)
+        self.classifier = nn.Linear(768, 48)
 
     def forward(self, x):
         bert_output = self.bert_encoder(**x)
-        cls_vectors = bert_output.last_hidden_state[:, 0]   
-        logits = self.classifier(cls_vectors)
+        cls_vectors = bert_output.last_hidden_state[:, 0]
+        l1 = self.linear(cls_vectors)
+        o1 = self.act(l1)
+        l2 = self.linear2(o1)
+        o2 = self.act(l2)
+        logits = self.classifier(o2)
         return logits
 
 model = NeuralNetwork().to(device)  
@@ -100,10 +108,20 @@ model = NeuralNetwork().to(device)
 # %%
 from tqdm.auto import tqdm
 with os.popen("cd /code_lp/baseline && git log") as f:
-    line = f.readline()
-    matched = re.search("(?<=commit\s)\w{8,8}", line)
-    assert matched
-    log = line[matched.start(): matched.end()]
+    matched_ = False
+    for line in f.readlines():
+        matched = re.search("(?<=commit\s)\w{5,5}", line)
+        if matched_ and matched:
+            break
+        elif not matched_ and matched:
+            log = line[matched.start(): matched.end()]
+        else:
+            if re.search("^(Author|Date):", line):
+                continue
+            if len(line.split()) > 0:
+                note=","+"_".join(line.split())
+                log+=note
+log = log[:20]
     
 tf_writer = tf.summary.create_file_writer(f"./summary/{log}")
 
@@ -126,7 +144,7 @@ def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total
         total_loss += loss.item()  
         progress_bar.set_description(f'loss: {total_loss/(finish_batch_num + batch):>7f}')  # 打印
         progress_bar.update(1)
-    return total_loss
+    return total_loss, total_loss/(finish_batch_num + batch)
 
 def test_loop(dataloader, model, mode='Test'):
     assert mode in ['Valid', 'Test']
@@ -164,15 +182,15 @@ total_loss = 0.
 best_acc = 0.
 for t in range(epoch_num):
     print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
-    total_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
+    total_loss, mean_loss = train_loop(train_dataloader, model, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
     valid_acc = test_loop(valid_dataloader, model, mode='Valid')
     if valid_acc > best_acc:
         best_acc = valid_acc
         print('saving new weights...\n')
         torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
     with tf_writer.as_default():
-        tf.summary.scalar("train_loss", total_loss, step=t)
-        tf.summary.scalar("valid_acc", valid_acc * 100, step=t)
+        tf.summary.scalar("train_loss", mean_loss, step=t)
+        tf.summary.scalar("valid_acc", valid_acc, step=t)
 print("Done!")
 
 # %%
