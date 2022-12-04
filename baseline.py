@@ -170,8 +170,9 @@ for t in range(epoch_num):
         best_acc = valid_acc
         print('saving new weights...\n')
         torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
-    tf.summary.scalar("train_loss", total_loss, step=t)
-    tf.summary.scalar("valid_acc", valid_acc * 100, step=t)
+    with tf_writer.as_default():
+        tf.summary.scalar("train_loss", total_loss, step=t)
+        tf.summary.scalar("valid_acc", valid_acc * 100, step=t)
 print("Done!")
 
 # %%
