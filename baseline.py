@@ -172,7 +172,7 @@ def main():
     train_dataloader = DataLoader(train_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
     valid_dataloader = DataLoader(valid_data, batch_size=4, shuffle=True, collate_fn=collote_fn)
     learning_rate = 1e-5
-    epoch_num = 10
+    epoch_num = 20
 
     loss_fn = nn.CrossEntropyLoss()  # 交叉熵
     optimizer = AdamW(model.parameters(), lr=learning_rate)  
