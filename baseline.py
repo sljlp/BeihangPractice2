@@ -42,7 +42,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):  
         return self.data[idx]
 
-
+        
 # %%
 from transformers import BertTokenizer
 
@@ -79,20 +79,12 @@ class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
         self.bert_encoder = AutoModel.from_pretrained(checkpoint)  
-        self.linear = nn.Linear(768, 768*2) 
-        self.act = nn.ReLU() 
-        # out = 48
-        self.linear2 = nn.Linear(768*2, 768)
-        self.classifier = nn.Linear(768, 48)
+        self.classifier = nn.Linear(768, 48)  
 
     def forward(self, x):
         bert_output = self.bert_encoder(**x)
-        cls_vectors = bert_output.last_hidden_state[:, 0]
-        l1 = self.linear(cls_vectors)
-        o1 = self.act(l1)
-        l2 = self.linear2(o1)
-        o2 = self.act(l2)
-        logits = self.classifier(o2)
+        cls_vectors = bert_output.last_hidden_state[:, 0]   
+        logits = self.classifier(cls_vectors)
         return logits
 
 # %%
@@ -115,7 +107,7 @@ def get_log():
                 note=","+"_".join(line.split())
                 log+=note
     return log[:20]
-
+    
 
 def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total_loss):
     progress_bar = tqdm(range(len(dataloader)))   
@@ -193,9 +185,9 @@ def main():
             best_acc = valid_acc
             print('saving new weights...\n')
             torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
-        with tf_writer.as_default():
-            tf.summary.scalar("train_loss", mean_loss, step=t)
-            tf.summary.scalar("valid_acc", valid_acc, step=t)
+            with tf_writer.as_default():
+                tf.summary.scalar("train_loss", mean_loss, step=t)
+                tf.summary.scalar("valid_acc", valid_acc, step=t)
     print("Done!")
 
 if __name__ == "__main__":
