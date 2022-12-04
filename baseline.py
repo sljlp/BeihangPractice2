@@ -184,7 +184,7 @@ def main():
         if valid_acc > best_acc:
             best_acc = valid_acc
             print('saving new weights...\n')
-            torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
+            # torch.save(model.state_dict(), f'epoch_{t+1}_valid_acc_{(100*valid_acc):0.1f}_model_weights.bin')
             with tf_writer.as_default():
                 tf.summary.scalar("train_loss", mean_loss, step=t)
                 tf.summary.scalar("valid_acc", valid_acc, step=t)
