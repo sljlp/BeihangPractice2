@@ -79,20 +79,12 @@ class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
         self.bert_encoder = AutoModel.from_pretrained(checkpoint)  
-        self.linear = nn.Linear(768, 768*2) 
-        self.act = nn.ReLU() 
-        # out = 48
-        self.linear2 = nn.Linear(768*2, 768)
         self.classifier = nn.Linear(768, 48)  
 
     def forward(self, x):
         bert_output = self.bert_encoder(**x)
         cls_vectors = bert_output.last_hidden_state[:, 0]   
-        l1 = self.linear(cls_vectors)
-        o1 = self.act(l1)
-        l2 = self.linear2(o1)
-        o2 = self.act(l2)
-        logits = self.classifier(o2)
+        logits = self.classifier(cls_vectors)
         return logits
 
 # %%
